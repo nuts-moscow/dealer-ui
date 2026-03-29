@@ -18,6 +18,7 @@ import {
   BountyListModal,
   EliminatedByModal,
 } from "./TableRebuyModals";
+import { PlayerBonusesModal } from "./PlayerBonusesModal";
 
 export interface TournamentTablesProps {
   readonly tournament: TournamentInfoResponse;
@@ -247,6 +248,9 @@ export const TournamentTables: FC<TournamentTablesProps> = ({ tournament }) => {
   const [burnedRebuyUndoPlayerId, setBurnedRebuyUndoPlayerId] = useState<
     string | undefined
   >(undefined);
+  const [playerBonusesPlayerId, setPlayerBonusesPlayerId] = useState<
+    string | undefined
+  >(undefined);
   const [SetOutPlayerModalConnect, openSetOutPlayerModal] =
     useModal(SetOutPlayerModal);
   const [AddReentryModalConnect, openAddReentryModal] =
@@ -257,6 +261,8 @@ export const TournamentTables: FC<TournamentTablesProps> = ({ tournament }) => {
   const [BountyModalConnect, openBountyModal] = useModal(BountyListModal);
   const [EliminatedByModalConnect, openEliminatedByModal] =
     useModal(EliminatedByModal);
+  const [PlayerBonusesModalConnect, openPlayerBonusesModal] =
+    useModal(PlayerBonusesModal);
   const { data: nonRegisteredPlayers } = useNonRegisteredTournamentPlayerState(
     String(tournament.id),
   );
@@ -301,6 +307,10 @@ export const TournamentTables: FC<TournamentTablesProps> = ({ tournament }) => {
         tournamentId={String(tournament.id)}
         players={nonRegisteredPlayers ?? []}
         onRemoved={refetchTournamentPlayerState}
+      />
+      <PlayerBonusesModalConnect
+        tournamentId={String(tournament.id)}
+        playerId={playerBonusesPlayerId}
       />
 
       <Box
@@ -378,10 +388,7 @@ export const TournamentTables: FC<TournamentTablesProps> = ({ tournament }) => {
               backgroundColor:
                 player.signAgreement === false
                   ? "rgba(255, 196, 2, 0.22)"
-                  : (player.entryPaymentMethod ?? player.entyPaymentMethod) ==
-                      null
-                    ? "rgba(220, 38, 38, 0.12)"
-                    : "#fff",
+                  : "#fff",
             }}
           >
             <Typography.Text
@@ -402,6 +409,16 @@ export const TournamentTables: FC<TournamentTablesProps> = ({ tournament }) => {
               {statusLabels[player.status] ?? player.status}
             </Typography.Text>
             <Box flex={{ gap: 2 }} style={{ flexWrap: "wrap" }}>
+              <Button
+                type="secondary"
+                size="xxSmall"
+                onClick={() => {
+                  setPlayerBonusesPlayerId(player.playerId);
+                  openPlayerBonusesModal();
+                }}
+              >
+                Бонусы
+              </Button>
               {tournament.status !== "RegistrationOpen" &&
                 player.status !== "Out" && (
                   <>

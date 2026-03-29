@@ -24,6 +24,7 @@ export const useTournament = queryState({
   ): Promise<TournamentInfoResponse | null> => {
     return getTournament(environment, id);
   },
+  pollInterval: 1_000,
   cache: true,
   deps: {
     environment: useEnvironment,
