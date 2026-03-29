@@ -1,0 +1,437 @@
+"use client";
+
+import { FC, useEffect, useMemo, useState } from "react";
+import { Box } from "@/components/Box/Box";
+import { Button } from "@/components/Button/Button";
+import { Typography } from "@/components/Typography/Typography";
+import { Modal, WithModalProps, useModal } from "@/components/Modal/Modal";
+import { TournamentInfoResponse } from "@/core/states/tournaments/requests/getTournament";
+import { TableList } from "../TournamentPlayers/TableList/TableList";
+import { useNonRegisteredTournamentPlayerState } from "@/core/states/tournaments/hooks/useNonRegisteredTournamentPlayerState";
+import { InGamePlayerState } from "@/core/states/tournaments/common/InGamePlayerState";
+import { useEnvironment } from "@/core/states/environment/useEnvironment";
+import { refetchTournamentPlayerState } from "@/core/states/tournaments/hooks/useTournamentPlayerState";
+import { bountyEliminate } from "@/core/states/tournaments/requests/bountyEliminate";
+import {
+  AddReentryModal,
+  BurnedRebuyUndoModal,
+  BountyListModal,
+  EliminatedByModal,
+} from "./TableRebuyModals";
+
+export interface TournamentTablesProps {
+  readonly tournament: TournamentInfoResponse;
+}
+
+interface SetOutPlayerModalProps extends WithModalProps {
+  readonly tournamentId: string;
+  readonly bustedPlayer?: InGamePlayerState;
+  readonly players: InGamePlayerState[];
+}
+
+const statusLabels: Record<string, string> = {
+  InGamePaid: "В игре",
+  InGameNotPaid: "В игре",
+  Out: "Выбыл",
+};
+
+const SetOutPlayerModal: FC<SetOutPlayerModalProps> = ({
+  close,
+  tournamentId,
+  bustedPlayer,
+  players,
+}) => {
+  const environment = useEnvironment();
+  const [isLoading, setIsLoading] = useState(false);
+  const [burnedStack, setBurnedStack] = useState(false);
+  const [burnedChipsInput, setBurnedChipsInput] = useState("");
+  const candidates = useMemo(
+    () =>
+      players.filter(
+        (player) =>
+          player.status !== "Out" && player.playerId !== bustedPlayer?.playerId,
+      ),
+    [players, bustedPlayer?.playerId],
+  );
+  const [selectedKillerId, setSelectedKillerId] = useState<string | undefined>(
+    undefined,
+  );
+
+  useEffect(() => {
+    setSelectedKillerId(candidates[0]?.playerId);
+    setBurnedStack(false);
+    setBurnedChipsInput("");
+  }, [bustedPlayer?.playerId, candidates]);
+
+  const canSave =
+    !!bustedPlayer &&
+    (burnedStack ? true : !!selectedKillerId && candidates.length > 0);
+
+  const handleSave = async () => {
+    if (!bustedPlayer || !canSave || isLoading) {
+      return;
+    }
+    if (burnedStack) {
+      const chips = Number.parseInt(burnedChipsInput.trim(), 10);
+      if (!Number.isFinite(chips) || chips < 0) {
+        return;
+      }
+      setIsLoading(true);
+      try {
+        await bountyEliminate(environment, Number(tournamentId), {
+          eliminatedPlayerId: bustedPlayer.playerId,
+          type: "Out",
+          burnedStack: true,
+          burnedChips: chips,
+        });
+        refetchTournamentPlayerState();
+        close();
+      } catch (error) {
+        console.error(error);
+      } finally {
+        setIsLoading(false);
+      }
+      return;
+    }
+    const killer = candidates.find(
+      (player) => player.playerId === selectedKillerId,
+    );
+    if (!killer) {
+      return;
+    }
+    setIsLoading(true);
+    try {
+      await bountyEliminate(environment, Number(tournamentId), {
+        eliminatedPlayerId: bustedPlayer.playerId,
+        killerPlayerId: killer.playerId,
+        type: "Out",
+      });
+      refetchTournamentPlayerState();
+      close();
+    } catch (error) {
+      console.error(error);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <Modal.Title showCloseButton close={close}>
+        Игрок вылетел
+      </Modal.Title>
+      <Modal.Content minWidth={440}>
+        <Box flex={{ col: true, gap: 4 }}>
+          <Typography.Text type="secondary" size="small">
+            {bustedPlayer
+              ? burnedStack
+                ? `Сжёг стек — игрок «${bustedPlayer.playerName}»`
+                : `Кто выбил игрока «${bustedPlayer.playerName}»?`
+              : "Выбери игрока"}
+          </Typography.Text>
+          <label
+            style={{
+              display: "flex",
+              alignItems: "center",
+              gap: 8,
+              cursor: "pointer",
+              userSelect: "none",
+            }}
+          >
+            <input
+              type="checkbox"
+              checked={burnedStack}
+              onChange={(e) => setBurnedStack(e.target.checked)}
+              disabled={isLoading}
+            />
+            <Typography.Text size="small">Сжёг стек</Typography.Text>
+          </label>
+          {burnedStack ? (
+            <input
+              type="number"
+              inputMode="numeric"
+              min={0}
+              step={1}
+              placeholder="Сожжённых фишек"
+              value={burnedChipsInput}
+              onChange={(e) => setBurnedChipsInput(e.target.value)}
+              disabled={isLoading}
+              style={{
+                width: "100%",
+                borderRadius: 12,
+                border: "1px solid var(--border-color)",
+                minHeight: 44,
+                padding: "0 12px",
+                backgroundColor: "var(--background-primary)",
+                color: "var(--text-primary)",
+              }}
+            />
+          ) : candidates.length > 0 ? (
+            <select
+              value={selectedKillerId}
+              onChange={(event) =>
+                setSelectedKillerId(event.target.value || undefined)
+              }
+              style={{
+                width: "100%",
+                borderRadius: 12,
+                border: "1px solid var(--border-color)",
+                minHeight: 44,
+                padding: "0 12px",
+                backgroundColor: "var(--background-primary)",
+                color: "var(--text-primary)",
+              }}
+            >
+              {candidates.map((player) => (
+                <option key={player.playerId} value={player.playerId}>
+                  {player.playerName} (ID: {player.playerId})
+                </option>
+              ))}
+            </select>
+          ) : (
+            <Typography.Text type="secondary" size="small">
+              Нет доступных игроков для выбора
+            </Typography.Text>
+          )}
+          <Box flex={{ gap: 4, width: "100%" }}>
+            <Button
+              type="secondary"
+              htmlType="button"
+              onClick={() => close()}
+              flexItem={{ flex: 1 }}
+              disabled={isLoading}
+            >
+              Отмена
+            </Button>
+            <Button
+              type="error"
+              htmlType="button"
+              onClick={handleSave}
+              flexItem={{ flex: 1 }}
+              loading={isLoading}
+              disabled={
+                !bustedPlayer ||
+                isLoading ||
+                (burnedStack
+                  ? !Number.isFinite(
+                      Number.parseInt(burnedChipsInput.trim(), 10),
+                    ) || Number.parseInt(burnedChipsInput.trim(), 10) < 0
+                  : !selectedKillerId || candidates.length === 0)
+              }
+            >
+              Сохранить
+            </Button>
+          </Box>
+        </Box>
+      </Modal.Content>
+    </>
+  );
+};
+
+export const TournamentTables: FC<TournamentTablesProps> = ({ tournament }) => {
+  const [selectedTableId, setSelectedTableId] = useState<number | undefined>(
+    undefined,
+  );
+  const [playerToSetOut, setPlayerToSetOut] = useState<
+    InGamePlayerState | undefined
+  >(undefined);
+  const [reentryPlayer, setReentryPlayer] = useState<
+    InGamePlayerState | undefined
+  >(undefined);
+  const [burnedRebuyUndoPlayerId, setBurnedRebuyUndoPlayerId] = useState<
+    string | undefined
+  >(undefined);
+  const [SetOutPlayerModalConnect, openSetOutPlayerModal] =
+    useModal(SetOutPlayerModal);
+  const [AddReentryModalConnect, openAddReentryModal] =
+    useModal(AddReentryModal);
+  const [BurnedRebuyUndoModalConnect, openBurnedRebuyUndoModal] = useModal(
+    BurnedRebuyUndoModal,
+  );
+  const [BountyModalConnect, openBountyModal] = useModal(BountyListModal);
+  const [EliminatedByModalConnect, openEliminatedByModal] =
+    useModal(EliminatedByModal);
+  const { data: nonRegisteredPlayers } = useNonRegisteredTournamentPlayerState(
+    String(tournament.id),
+  );
+  const excludedFromTableStatuses = ["Out", "OutNotPaid"] as const;
+  const tablePlayers = (nonRegisteredPlayers ?? []).filter(
+    (player) =>
+      !!selectedTableId &&
+      Number(player.tableId) === selectedTableId &&
+      !excludedFromTableStatuses.includes(
+        player.status as (typeof excludedFromTableStatuses)[number],
+      ),
+  );
+
+  return (
+    <Box flex={{ col: true, gap: 8, width: "100%" }}>
+      <SetOutPlayerModalConnect
+        tournamentId={String(tournament.id)}
+        bustedPlayer={playerToSetOut}
+        players={
+          playerToSetOut?.tableId
+            ? (nonRegisteredPlayers ?? []).filter(
+                (p) => String(p.tableId) === String(playerToSetOut.tableId),
+              )
+            : []
+        }
+      />
+      <AddReentryModalConnect
+        tournamentId={String(tournament.id)}
+        player={reentryPlayer}
+        players={nonRegisteredPlayers ?? []}
+      />
+      <BurnedRebuyUndoModalConnect
+        tournamentId={String(tournament.id)}
+        playerId={burnedRebuyUndoPlayerId}
+      />
+      <BountyModalConnect
+        tournamentId={String(tournament.id)}
+        players={nonRegisteredPlayers ?? []}
+        onRemoved={refetchTournamentPlayerState}
+      />
+      <EliminatedByModalConnect
+        tournamentId={String(tournament.id)}
+        players={nonRegisteredPlayers ?? []}
+        onRemoved={refetchTournamentPlayerState}
+      />
+      <TableList
+        tournamentId={String(tournament.id)}
+        selectable
+        selectedTableId={selectedTableId}
+        onSelectTable={setSelectedTableId}
+      />
+      <Box flex={{ col: true, gap: 2, width: "100%" }}>
+        <Box
+          flex={{ width: "100%", align: "center", gap: 2 }}
+          style={{ padding: "0 12px" }}
+        >
+          <Typography.Text
+            type="secondary"
+            size="small"
+            flexItem={{ minWidth: 56 }}
+          >
+            ID
+          </Typography.Text>
+          <Typography.Text type="secondary" size="small" flexItem={{ flex: 1 }}>
+            Имя
+          </Typography.Text>
+          <Typography.Text
+            type="secondary"
+            size="small"
+            flexItem={{ minWidth: 120 }}
+          >
+            Статус
+          </Typography.Text>
+          <Typography.Text type="secondary" size="small">
+            Действия
+          </Typography.Text>
+        </Box>
+
+        {tablePlayers.map((player) => (
+          <Box
+            key={player.playerId}
+            flex={{ width: "100%", align: "center", gap: 2 }}
+            style={{
+              padding: "8px 12px",
+              borderRadius: 10,
+              border: "1px solid rgba(0, 0, 0, 0.08)",
+              backgroundColor:
+                player.signAgreement === false
+                  ? "rgba(255, 196, 2, 0.22)"
+                  : (player.entryPaymentMethod ?? player.entyPaymentMethod) ==
+                      null
+                    ? "rgba(220, 38, 38, 0.12)"
+                    : "#fff",
+            }}
+          >
+            <Typography.Text
+              size="small"
+              type="secondary"
+              flexItem={{ minWidth: 56 }}
+            >
+              {player.tournamentPlayerId}
+            </Typography.Text>
+            <Typography.Text size="small" flexItem={{ flex: 1 }}>
+              {player.playerName}
+            </Typography.Text>
+            <Typography.Text
+              size="small"
+              type="secondary"
+              flexItem={{ minWidth: 120 }}
+            >
+              {statusLabels[player.status] ?? player.status}
+            </Typography.Text>
+            <Box flex={{ gap: 2 }} style={{ flexWrap: "wrap" }}>
+              {tournament.status !== "RegistrationOpen" &&
+                player.status !== "Out" && (
+                  <>
+                    <Button
+                      type="secondary"
+                      size="xxSmall"
+                      onClick={() => {
+                        setReentryPlayer(player);
+                        openAddReentryModal();
+                      }}
+                    >
+                      Добавить реентри
+                    </Button>
+                    {(player.burnedStackEvents ?? []).some(
+                      (e) => e.source === "Rebuy",
+                    ) && (
+                      <Button
+                        type="secondary"
+                        size="xxSmall"
+                        onClick={() => {
+                          setBurnedRebuyUndoPlayerId(player.playerId);
+                          openBurnedRebuyUndoModal();
+                        }}
+                      >
+                        Откат сгорания
+                      </Button>
+                    )}
+                    <Button
+                      type="secondary"
+                      size="xxSmall"
+                      onClick={() => openBountyModal(player)}
+                    >
+                      Баунти
+                    </Button>
+                    <Button
+                      type="secondary"
+                      size="xxSmall"
+                      onClick={() => openEliminatedByModal(player)}
+                    >
+                      Кто выбил
+                    </Button>
+                    <Button
+                      type="error"
+                      size="xxSmall"
+                      onClick={() => {
+                        setPlayerToSetOut(player);
+                        openSetOutPlayerModal();
+                      }}
+                    >
+                      Вылетел
+                    </Button>
+                  </>
+                )}
+            </Box>
+          </Box>
+        ))}
+
+        {!selectedTableId && (
+          <Typography.Text type="secondary" size="small">
+            Выбери стол сверху, чтобы увидеть игроков
+          </Typography.Text>
+        )}
+        {selectedTableId && tablePlayers.length === 0 && (
+          <Typography.Text type="secondary" size="small">
+            На этом столе нет игроков
+          </Typography.Text>
+        )}
+      </Box>
+    </Box>
+  );
+};

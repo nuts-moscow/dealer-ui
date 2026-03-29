@@ -36,7 +36,7 @@ export const TournamentsPageView: FC<TournamentsPageViewProps> = ({
     if (!tournaments) return [];
     if (!searchQuery) return tournaments;
     return tournaments.filter((tournament) =>
-      tournament.name.toLowerCase().includes(searchQuery.toLowerCase())
+      tournament.name.toLowerCase().includes(searchQuery.toLowerCase()),
     );
   }, [tournaments, searchQuery, activeTab]);
 
@@ -83,7 +83,6 @@ export const TournamentsPageView: FC<TournamentsPageViewProps> = ({
             >
               <ToggleGroup.Item value="RegistrationOpen">Открыты</ToggleGroup.Item>
               <ToggleGroup.Item value="InProgress">Идет игра</ToggleGroup.Item>
-              <ToggleGroup.Item value="Completed">Архив</ToggleGroup.Item>
             </ToggleGroup>
           </Box>
 
