@@ -229,9 +229,15 @@ const SetOutPlayerModal: FC<SetOutPlayerModalProps> = ({
 };
 
 export const TournamentTables: FC<TournamentTablesProps> = ({ tournament }) => {
+  const [showTablePicker, setShowTablePicker] = useState(false);
   const [selectedTableId, setSelectedTableId] = useState<number | undefined>(
     undefined,
   );
+
+  const handleSelectTable = (tableId: number) => {
+    setSelectedTableId(tableId);
+    setShowTablePicker(false);
+  };
   const [playerToSetOut, setPlayerToSetOut] = useState<
     InGamePlayerState | undefined
   >(undefined);
@@ -296,12 +302,44 @@ export const TournamentTables: FC<TournamentTablesProps> = ({ tournament }) => {
         players={nonRegisteredPlayers ?? []}
         onRemoved={refetchTournamentPlayerState}
       />
-      <TableList
-        tournamentId={String(tournament.id)}
-        selectable
-        selectedTableId={selectedTableId}
-        onSelectTable={setSelectedTableId}
-      />
+
+      <Box
+        flex={{
+          width: "100%",
+          align: "center",
+          justify: "space-between",
+          gap: 2,
+        }}
+        style={{ padding: "0 4px" }}
+      >
+        <Typography.Text type="secondary" size="small">
+          {selectedTableId != null
+            ? `Стол ${selectedTableId}`
+            : "Стол не выбран"}
+        </Typography.Text>
+        <Button
+          type="secondary"
+          size="small"
+          htmlType="button"
+          onClick={() => setShowTablePicker((open) => !open)}
+        >
+          {showTablePicker
+            ? "Скрыть столы"
+            : selectedTableId != null
+              ? "Сменить стол"
+              : "Выбрать стол"}
+        </Button>
+      </Box>
+
+      {showTablePicker ? (
+        <TableList
+          tournamentId={String(tournament.id)}
+          selectable
+          selectedTableId={selectedTableId}
+          onSelectTable={handleSelectTable}
+        />
+      ) : null}
+
       <Box flex={{ col: true, gap: 2, width: "100%" }}>
         <Box
           flex={{ width: "100%", align: "center", gap: 2 }}
@@ -423,7 +461,7 @@ export const TournamentTables: FC<TournamentTablesProps> = ({ tournament }) => {
 
         {!selectedTableId && (
           <Typography.Text type="secondary" size="small">
-            Выбери стол сверху, чтобы увидеть игроков
+            Нажмите «Выбрать стол», чтобы увидеть список игроков
           </Typography.Text>
         )}
         {selectedTableId && tablePlayers.length === 0 && (
