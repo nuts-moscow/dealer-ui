@@ -12,6 +12,7 @@ import { InGamePlayerState } from "@/core/states/tournaments/common/InGamePlayer
 import { useEnvironment } from "@/core/states/environment/useEnvironment";
 import { refetchTournamentPlayerState } from "@/core/states/tournaments/hooks/useTournamentPlayerState";
 import { bountyEliminate } from "@/core/states/tournaments/requests/bountyEliminate";
+import { toast } from "@/components/Toast/Toast";
 import {
   AddReentryModal,
   BurnedRebuyUndoModal,
@@ -38,6 +39,7 @@ const statusLabels: Record<string, string> = {
 
 const SetOutPlayerModal: FC<SetOutPlayerModalProps> = ({
   close,
+  opened,
   tournamentId,
   bustedPlayer,
   players,
@@ -59,10 +61,16 @@ const SetOutPlayerModal: FC<SetOutPlayerModalProps> = ({
   );
 
   useEffect(() => {
-    setSelectedKillerId(candidates[0]?.playerId);
+    if (!opened || !bustedPlayer?.playerId) {
+      return;
+    }
+    const cand = players.filter(
+      (p) => p.status !== "Out" && p.playerId !== bustedPlayer.playerId,
+    );
+    setSelectedKillerId(cand[0]?.playerId);
     setBurnedStack(false);
     setBurnedChipsInput("");
-  }, [bustedPlayer?.playerId, candidates]);
+  }, [opened, bustedPlayer?.playerId, players]);
 
   const canSave =
     !!bustedPlayer &&
@@ -89,6 +97,13 @@ const SetOutPlayerModal: FC<SetOutPlayerModalProps> = ({
         close();
       } catch (error) {
         console.error(error);
+        toast({
+          type: "error",
+          message:
+            error instanceof Error
+              ? error.message
+              : "Не удалось зафиксировать вылет",
+        });
       } finally {
         setIsLoading(false);
       }
@@ -111,6 +126,13 @@ const SetOutPlayerModal: FC<SetOutPlayerModalProps> = ({
       close();
     } catch (error) {
       console.error(error);
+      toast({
+        type: "error",
+        message:
+          error instanceof Error
+            ? error.message
+            : "Не удалось зафиксировать вылет",
+      });
     } finally {
       setIsLoading(false);
     }
@@ -242,6 +264,9 @@ export const TournamentTables: FC<TournamentTablesProps> = ({ tournament }) => {
   const [playerToSetOut, setPlayerToSetOut] = useState<
     InGamePlayerState | undefined
   >(undefined);
+  const [eliminationTableSnapshot, setEliminationTableSnapshot] = useState<
+    InGamePlayerState[]
+  >([]);
   const [reentryPlayer, setReentryPlayer] = useState<
     InGamePlayerState | undefined
   >(undefined);
@@ -281,13 +306,7 @@ export const TournamentTables: FC<TournamentTablesProps> = ({ tournament }) => {
       <SetOutPlayerModalConnect
         tournamentId={String(tournament.id)}
         bustedPlayer={playerToSetOut}
-        players={
-          playerToSetOut?.tableId
-            ? (nonRegisteredPlayers ?? []).filter(
-                (p) => String(p.tableId) === String(playerToSetOut.tableId),
-              )
-            : []
-        }
+        players={eliminationTableSnapshot}
       />
       <AddReentryModalConnect
         tournamentId={String(tournament.id)}
@@ -464,6 +483,11 @@ export const TournamentTables: FC<TournamentTablesProps> = ({ tournament }) => {
                       type="error"
                       size="xxSmall"
                       onClick={() => {
+                        const tid = player.tableId;
+                        const snapshot = (nonRegisteredPlayers ?? []).filter(
+                          (p) => String(p.tableId) === String(tid),
+                        );
+                        setEliminationTableSnapshot(snapshot);
                         setPlayerToSetOut(player);
                         openSetOutPlayerModal();
                       }}
