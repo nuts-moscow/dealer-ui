@@ -29,6 +29,15 @@ export const tournamentBonusLabels: Record<Bonus, string> = {
 export interface BountyKillEntry {
   readonly playerId: string;
   readonly playerName?: string;
+  /** Если с бэка приходит — откат через eliminate/undo по eventId. */
+  readonly eventId?: string;
+}
+
+/** Событие выбивания (новый контракт DTO). */
+export interface BountyEliminationEvent {
+  readonly eventId: string;
+  readonly eliminatedPlayerId: string;
+  readonly killerPlayerIds: readonly string[];
 }
 
 export type BurnedStackSource = "Rebuy" | "Out";
@@ -50,9 +59,13 @@ export interface InGamePlayerState {
   readonly entyPaymentMethod?: PaymentMethod;
   readonly reentryByPaymentMethod: PaymentMethod[];
   readonly totalReentryCount: number;
+  /** Дробная доля при разделении баунти 1/N между убийцами. */
   readonly bountyCount: number;
-  /** ID жертв — playerId (строка или объект с playerId). */
+  /** Новый список событий выбиваний для UI и отката по eventId. */
+  readonly bountyEliminationEvents?: readonly BountyEliminationEvent[];
+  /** ID жертв — playerId (строка или объект с playerId). Переходный период. */
   readonly bountyKills?: (BountyKillEntry | string)[];
+  /** Переходный период: кто выбил жертву (без eventId). */
   readonly eliminatedBy?: string[];
   readonly bonuses: Bonus[];
   /** Переменные бонусы (фишки); каждое число — отдельный грант. */
@@ -70,6 +83,17 @@ export interface InGamePlayerState {
   readonly signAgreement?: boolean;
   /** Сгорания стека по событиям; откат ребая — только source=Rebuy. */
   readonly burnedStackEvents?: readonly BurnedStackEvent[];
+}
+
+/** Отображение доли баунти (в т.ч. дробной 1/N). */
+export function formatBountyCount(value: number): string {
+  if (!Number.isFinite(value)) {
+    return "—";
+  }
+  return new Intl.NumberFormat("ru-RU", {
+    minimumFractionDigits: 0,
+    maximumFractionDigits: 6,
+  }).format(value);
 }
 
 /** Есть ли у игрока бесплатный вход (глобально или в турнире) для способа оплаты Free. */

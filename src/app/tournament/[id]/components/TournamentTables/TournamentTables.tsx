@@ -56,9 +56,7 @@ const SetOutPlayerModal: FC<SetOutPlayerModalProps> = ({
       ),
     [players, bustedPlayer?.playerId],
   );
-  const [selectedKillerId, setSelectedKillerId] = useState<string | undefined>(
-    undefined,
-  );
+  const [selectedKillerIds, setSelectedKillerIds] = useState<string[]>([]);
 
   useEffect(() => {
     if (!opened || !bustedPlayer?.playerId) {
@@ -67,14 +65,32 @@ const SetOutPlayerModal: FC<SetOutPlayerModalProps> = ({
     const cand = players.filter(
       (p) => p.status !== "Out" && p.playerId !== bustedPlayer.playerId,
     );
-    setSelectedKillerId(cand[0]?.playerId);
+    setSelectedKillerIds(cand[0]?.playerId ? [cand[0].playerId] : []);
     setBurnedStack(false);
     setBurnedChipsInput("");
   }, [opened, bustedPlayer?.playerId, players]);
 
+  const effectiveKillerIds = useMemo(
+    () =>
+      [
+        ...new Set(
+          selectedKillerIds.filter((id) =>
+            candidates.some((c) => c.playerId === id),
+          ),
+        ),
+      ],
+    [selectedKillerIds, candidates],
+  );
+
+  const toggleKiller = (id: string) => {
+    setSelectedKillerIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  };
+
   const canSave =
     !!bustedPlayer &&
-    (burnedStack ? true : !!selectedKillerId && candidates.length > 0);
+    (burnedStack ? true : effectiveKillerIds.length > 0 && candidates.length > 0);
 
   const handleSave = async () => {
     if (!bustedPlayer || !canSave || isLoading) {
@@ -92,6 +108,7 @@ const SetOutPlayerModal: FC<SetOutPlayerModalProps> = ({
           type: "Out",
           burnedStack: true,
           burnedChips: chips,
+          killerPlayerIds: [],
         });
         refetchTournamentPlayerState();
         close();
@@ -109,17 +126,14 @@ const SetOutPlayerModal: FC<SetOutPlayerModalProps> = ({
       }
       return;
     }
-    const killer = candidates.find(
-      (player) => player.playerId === selectedKillerId,
-    );
-    if (!killer) {
+    if (effectiveKillerIds.length === 0) {
       return;
     }
     setIsLoading(true);
     try {
       await bountyEliminate(environment, Number(tournamentId), {
         eliminatedPlayerId: bustedPlayer.playerId,
-        killerPlayerId: killer.playerId,
+        killerPlayerIds: effectiveKillerIds,
         type: "Out",
       });
       refetchTournamentPlayerState();
@@ -190,27 +204,36 @@ const SetOutPlayerModal: FC<SetOutPlayerModalProps> = ({
               }}
             />
           ) : candidates.length > 0 ? (
-            <select
-              value={selectedKillerId}
-              onChange={(event) =>
-                setSelectedKillerId(event.target.value || undefined)
-              }
-              style={{
-                width: "100%",
-                borderRadius: 12,
-                border: "1px solid var(--border-color)",
-                minHeight: 44,
-                padding: "0 12px",
-                backgroundColor: "var(--background-primary)",
-                color: "var(--text-primary)",
-              }}
-            >
+            <Box flex={{ col: true, gap: 2 }}>
               {candidates.map((player) => (
-                <option key={player.playerId} value={player.playerId}>
-                  {player.playerName} (ID: {player.playerId})
-                </option>
+                <label
+                  key={player.playerId}
+                  style={{
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 8,
+                    cursor: "pointer",
+                    userSelect: "none",
+                  }}
+                >
+                  <input
+                    type="checkbox"
+                    checked={selectedKillerIds.includes(player.playerId)}
+                    onChange={() => toggleKiller(player.playerId)}
+                    disabled={isLoading}
+                  />
+                  <Typography.Text size="small">
+                    {player.playerName} (ID: {player.playerId})
+                  </Typography.Text>
+                </label>
               ))}
-            </select>
+              {effectiveKillerIds.length > 1 ? (
+                <Typography.Text type="secondary" size="xxSmall">
+                  Выбрано убийц: {effectiveKillerIds.length}. Каждый получит долю
+                  1/{effectiveKillerIds.length} полного баунти.
+                </Typography.Text>
+              ) : null}
+            </Box>
           ) : (
             <Typography.Text type="secondary" size="small">
               Нет доступных игроков для выбора
@@ -239,7 +262,7 @@ const SetOutPlayerModal: FC<SetOutPlayerModalProps> = ({
                   ? !Number.isFinite(
                       Number.parseInt(burnedChipsInput.trim(), 10),
                     ) || Number.parseInt(burnedChipsInput.trim(), 10) < 0
-                  : !selectedKillerId || candidates.length === 0)
+                  : effectiveKillerIds.length === 0 || candidates.length === 0)
               }
             >
               Сохранить

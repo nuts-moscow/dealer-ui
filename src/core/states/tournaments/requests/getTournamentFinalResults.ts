@@ -1,10 +1,9 @@
 import { securedFetch } from "@/core/utils/misc/securedFetch";
 import { Environment } from "../../environment/Environment";
-
-export interface BountyKillEntry {
-  readonly playerId: string;
-  readonly playerName?: string;
-}
+import {
+  BountyEliminationEvent,
+  BountyKillEntry,
+} from "../common/InGamePlayerState";
 
 export interface TournamentPlayerResult {
   readonly playerId: number | string;
@@ -12,7 +11,9 @@ export interface TournamentPlayerResult {
   readonly tournamentPlayerId?: number | string;
   readonly playerName: string;
   readonly placement: number | null;
+  /** Дробная доля при разделении баунти 1/N. */
   readonly bountyCount: number;
+  readonly bountyEliminationEvents?: readonly BountyEliminationEvent[];
   readonly bountyKills?: (BountyKillEntry | string)[];
   readonly eliminatedBy?: string[];
 }

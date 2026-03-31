@@ -8,11 +8,9 @@ import { Typography } from "@/components/Typography/Typography";
 import { toast } from "@/components/Toast/Toast";
 import { NumberFormatter } from "@/components/Formatter/NumberFormatter/NumberFormatter";
 import {
-  SearchableSelect,
-  SearchableSelectOption,
-} from "@/components/SearchableSelect/SearchableSelect";
-import {
   BountyKillEntry,
+  BountyEliminationEvent,
+  formatBountyCount,
   InGamePlayerState,
 } from "@/core/states/tournaments/common/InGamePlayerState";
 import { useEnvironment } from "@/core/states/environment/useEnvironment";
@@ -25,7 +23,7 @@ import {
   bountyEliminate,
   BountyEliminateBody,
 } from "@/core/states/tournaments/requests/bountyEliminate";
-import { bountyRemove } from "@/core/states/tournaments/requests/bountyRemove";
+import { bountyEliminateUndo } from "@/core/states/tournaments/requests/bountyEliminateUndo";
 import { undoRebuyBurnedStack } from "@/core/states/tournaments/requests/undoRebuyBurnedStack";
 import { X } from "lucide-react";
 
@@ -50,9 +48,7 @@ export const AddReentryModal: FC<AddReentryModalProps> = ({
   const [count, setCount] = useState(1);
   const [burnedStack, setBurnedStack] = useState(false);
   const [burnedChipsInput, setBurnedChipsInput] = useState("");
-  const [killerPlayerId, setKillerPlayerId] = useState<string | undefined>(
-    undefined,
-  );
+  const [selectedKillerIds, setSelectedKillerIds] = useState<string[]>([]);
   const [isSaving, setIsSaving] = useState(false);
 
   const killerCandidates = useMemo(
@@ -66,30 +62,31 @@ export const AddReentryModal: FC<AddReentryModalProps> = ({
     [player?.playerId, player?.tableId, players],
   );
 
-  const killerOptions = useMemo<SearchableSelectOption[]>(
-    () =>
-      killerCandidates.map((candidate) => ({
-        value: candidate.playerId,
-        label: `${candidate.playerName} (ID: ${candidate.playerId})`,
-      })),
-    [killerCandidates],
-  );
-
   useEffect(() => {
     setCount(1);
     setBurnedStack(false);
     setBurnedChipsInput("");
-    setKillerPlayerId(killerCandidates[0]?.playerId);
+    const first = killerCandidates[0]?.playerId;
+    setSelectedKillerIds(first ? [first] : []);
   }, [player?.playerId, killerCandidates]);
 
-  useEffect(() => {
-    if (
-      killerPlayerId &&
-      !killerCandidates.some((c) => c.playerId === killerPlayerId)
-    ) {
-      setKillerPlayerId(killerCandidates[0]?.playerId);
-    }
-  }, [killerCandidates, killerPlayerId]);
+  const toggleKiller = (id: string) => {
+    setSelectedKillerIds((prev) =>
+      prev.includes(id) ? prev.filter((x) => x !== id) : [...prev, id],
+    );
+  };
+
+  const effectiveKillerIds = useMemo(
+    () =>
+      [
+        ...new Set(
+          selectedKillerIds.filter((id) =>
+            killerCandidates.some((c) => c.playerId === id),
+          ),
+        ),
+      ],
+    [selectedKillerIds, killerCandidates],
+  );
 
   const handleSave = async () => {
     if (!player || count <= 0 || isSaving) return;
@@ -102,13 +99,14 @@ export const AddReentryModal: FC<AddReentryModalProps> = ({
         type: "Rebuy",
         burnedStack: true,
         burnedChips: parsed,
+        killerPlayerIds: [],
       };
     } else {
-      if (!killerPlayerId) return;
+      if (effectiveKillerIds.length === 0) return;
       payload = {
         eliminatedPlayerId: player.playerId,
-        killerPlayerId,
         type: "Rebuy",
+        killerPlayerIds: effectiveKillerIds,
       };
     }
     setIsSaving(true);
@@ -176,17 +174,42 @@ export const AddReentryModal: FC<AddReentryModalProps> = ({
               }}
             />
           ) : (
-            <SearchableSelect
-              options={killerOptions}
-              value={killerPlayerId}
-              placeholder={
-                killerCandidates.length > 0
-                  ? "Кто выбил игрока?"
-                  : "Нет игроков за этим столом"
-              }
-              disabled={killerCandidates.length === 0 || isSaving}
-              onChange={(value) => setKillerPlayerId(value)}
-            />
+            <Box flex={{ col: true, gap: 2 }}>
+              {killerCandidates.length === 0 ? (
+                <Typography.Text type="secondary" size="small">
+                  Нет игроков за этим столом
+                </Typography.Text>
+              ) : (
+                killerCandidates.map((candidate) => (
+                  <label
+                    key={candidate.playerId}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      cursor: "pointer",
+                      userSelect: "none",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={selectedKillerIds.includes(candidate.playerId)}
+                      onChange={() => toggleKiller(candidate.playerId)}
+                      disabled={isSaving}
+                    />
+                    <Typography.Text size="small">
+                      {candidate.playerName} (ID: {candidate.playerId})
+                    </Typography.Text>
+                  </label>
+                ))
+              )}
+              {effectiveKillerIds.length > 1 ? (
+                <Typography.Text type="secondary" size="xxSmall">
+                  Выбрано убийц: {effectiveKillerIds.length}. Каждый получит
+                  долю 1/{effectiveKillerIds.length} полного баунти.
+                </Typography.Text>
+              ) : null}
+            </Box>
           )}
           <Typography.Text type="secondary" size="xxSmall">
             Количество ребаев (подряд одинаковым способом)
@@ -234,7 +257,7 @@ export const AddReentryModal: FC<AddReentryModalProps> = ({
                       Number.parseInt(burnedChipsInput.trim(), 10),
                     ) ||
                     Number.parseInt(burnedChipsInput.trim(), 10) < 0
-                  : !killerPlayerId)
+                  : effectiveKillerIds.length === 0)
               }
             >
               Сохранить
@@ -382,9 +405,31 @@ export const BountyListModal: FC<BountyListModalProps> = ({
   onRemoved,
 }) => {
   const environment = useEnvironment();
-  const [removingId, setRemovingId] = useState<string | null>(null);
-  const bountyKills = row?.bountyKills ?? [];
-  const killerPlayerId = row?.playerId ?? "";
+  const [removingEventId, setRemovingEventId] = useState<string | null>(null);
+  const myId = row?.playerId ?? "";
+  const eventsAsKiller: readonly BountyEliminationEvent[] =
+    row?.bountyEliminationEvents?.filter((e) =>
+      e.killerPlayerIds.includes(myId),
+    ) ?? [];
+  const legacyKills =
+    eventsAsKiller.length > 0 ? [] : (row?.bountyKills ?? []);
+
+  const coKillersLine = (
+    killerPlayerIds: readonly string[],
+    excludePlayerId: string,
+  ): string | null => {
+    const others = killerPlayerIds.filter(
+      (id) => String(id) !== String(excludePlayerId),
+    );
+    if (others.length === 0) return null;
+    return `вместе с: ${others
+      .map(
+        (id) =>
+          players.find((p) => String(p.playerId) === String(id))?.playerName ??
+          id,
+      )
+      .join(", ")}`;
+  };
 
   const getVictimDisplay = (kill: BountyKillEntry | string) => {
     const rawId =
@@ -402,22 +447,21 @@ export const BountyListModal: FC<BountyListModalProps> = ({
     };
   };
 
-  const handleRemove = async (victimPlayerId: string) => {
-    setRemovingId(victimPlayerId);
+  const handleUndoByEventId = async (eventId: string) => {
+    setRemovingEventId(eventId);
     try {
-      await bountyRemove(environment, tournamentId, {
-        killerPlayerId,
-        victimPlayerId,
-      });
+      await bountyEliminateUndo(environment, tournamentId, { eventId });
       onRemoved();
       close();
     } catch (error) {
       console.error(error);
       toast({ type: "error", message: "Не удалось отменить выбивание" });
     } finally {
-      setRemovingId(null);
+      setRemovingEventId(null);
     }
   };
+
+  const hasRows = eventsAsKiller.length > 0 || legacyKills.length > 0;
 
   return (
     <Box flex={{ col: true }}>
@@ -426,40 +470,90 @@ export const BountyListModal: FC<BountyListModalProps> = ({
       </Modal.Title>
       <Modal.Content minWidth={400}>
         <Box flex={{ col: true, gap: 2 }}>
-          {bountyKills.length === 0 ? (
+          {row != null ? (
+            <Typography.Text type="secondary" size="xxSmall">
+              Счётчик баунти: {formatBountyCount(row.bountyCount)}
+            </Typography.Text>
+          ) : null}
+          {!hasRows ? (
             <Typography.Text type="secondary" size="small">
               Нет выбиваний
             </Typography.Text>
           ) : (
-            bountyKills.map((kill, index) => {
-              const { name, victimPlayerId } = getVictimDisplay(kill);
-              const keyId =
-                typeof kill === "string"
-                  ? kill
-                  : String((kill as BountyKillEntry).playerId ?? index);
-              return (
-                <Box
-                  key={`${keyId}-${index}`}
-                  flex={{ align: "center", justify: "space-between", gap: 2 }}
-                  style={{
-                    padding: "8px 12px",
-                    borderRadius: 10,
-                    border: "1px solid var(--border-color)",
-                  }}
-                >
-                  <Typography.Text size="small">{name}</Typography.Text>
-                  <Button
-                    type="ghost"
-                    size="xxSmall"
-                    style={{ padding: 4 }}
-                    iconRight={<X size={16} color="var(--text-error)" />}
-                    onClick={() => handleRemove(victimPlayerId)}
-                    disabled={removingId !== null}
-                    loading={removingId === victimPlayerId}
-                  />
-                </Box>
-              );
-            })
+            <>
+              {eventsAsKiller.map((ev) => {
+                const { name } = getVictimDisplay(ev.eliminatedPlayerId);
+                const withOthers = coKillersLine(ev.killerPlayerIds, myId);
+                return (
+                  <Box
+                    key={ev.eventId}
+                    flex={{ align: "center", justify: "space-between", gap: 2 }}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 10,
+                      border: "1px solid var(--border-color)",
+                    }}
+                  >
+                    <Box flex={{ col: true, gap: 0 }} style={{ minWidth: 0 }}>
+                      <Typography.Text size="small">{name}</Typography.Text>
+                      {withOthers ? (
+                        <Typography.Text type="secondary" size="xxSmall">
+                          {withOthers}
+                        </Typography.Text>
+                      ) : null}
+                    </Box>
+                    <Button
+                      type="ghost"
+                      size="xxSmall"
+                      style={{ padding: 4 }}
+                      iconRight={<X size={16} color="var(--text-error)" />}
+                      onClick={() => handleUndoByEventId(ev.eventId)}
+                      disabled={removingEventId !== null}
+                      loading={removingEventId === ev.eventId}
+                    />
+                  </Box>
+                );
+              })}
+              {legacyKills.map((kill, index) => {
+                const { name } = getVictimDisplay(kill);
+                const keyId =
+                  typeof kill === "string"
+                    ? kill
+                    : String((kill as BountyKillEntry).playerId ?? index);
+                const eventId =
+                  typeof kill === "object" && kill && "eventId" in kill
+                    ? kill.eventId
+                    : undefined;
+                return (
+                  <Box
+                    key={`${keyId}-${index}`}
+                    flex={{ align: "center", justify: "space-between", gap: 2 }}
+                    style={{
+                      padding: "8px 12px",
+                      borderRadius: 10,
+                      border: "1px solid var(--border-color)",
+                    }}
+                  >
+                    <Typography.Text size="small">{name}</Typography.Text>
+                    {eventId ? (
+                      <Button
+                        type="ghost"
+                        size="xxSmall"
+                        style={{ padding: 4 }}
+                        iconRight={<X size={16} color="var(--text-error)" />}
+                        onClick={() => handleUndoByEventId(eventId)}
+                        disabled={removingEventId !== null}
+                        loading={removingEventId === eventId}
+                      />
+                    ) : (
+                      <Typography.Text type="tertiary" size="xxSmall">
+                        Нет eventId — откат недоступен
+                      </Typography.Text>
+                    )}
+                  </Box>
+                );
+              })}
+            </>
           )}
         </Box>
       </Modal.Content>
@@ -481,34 +575,39 @@ export const EliminatedByModal: FC<EliminatedByModalProps> = ({
   onRemoved,
 }) => {
   const environment = useEnvironment();
-  const [removingId, setRemovingId] = useState<string | null>(null);
-  const eliminatedByIds = row?.eliminatedBy ?? [];
+  const [removingEventId, setRemovingEventId] = useState<string | null>(null);
   const victimPlayerId = row?.playerId ?? "";
+  const eventsAsVictim: readonly BountyEliminationEvent[] =
+    row?.bountyEliminationEvents?.filter(
+      (e) => e.eliminatedPlayerId === victimPlayerId,
+    ) ?? [];
+  const legacyKillerIds =
+    eventsAsVictim.length > 0 ? [] : (row?.eliminatedBy ?? []);
 
-  const getKillerInfo = (id: string) => {
-    const killer = players.find((p) => String(p.playerId) === String(id));
-    return {
-      name: killer?.playerName ?? id,
-      killerPlayerId: killer?.playerId ?? id,
-    };
-  };
+  const killerNamesLine = (ids: readonly string[]) =>
+    ids
+      .map(
+        (id) =>
+          players.find((p) => String(p.playerId) === String(id))?.playerName ??
+          id,
+      )
+      .join(", ");
 
-  const handleRemove = async (killerPlayerId: string) => {
-    setRemovingId(killerPlayerId);
+  const handleUndoByEventId = async (eventId: string) => {
+    setRemovingEventId(eventId);
     try {
-      await bountyRemove(environment, tournamentId, {
-        killerPlayerId,
-        victimPlayerId,
-      });
+      await bountyEliminateUndo(environment, tournamentId, { eventId });
       onRemoved();
       close();
     } catch (error) {
       console.error(error);
       toast({ type: "error", message: "Не удалось отменить запись" });
     } finally {
-      setRemovingId(null);
+      setRemovingEventId(null);
     }
   };
+
+  const hasRows = eventsAsVictim.length > 0 || legacyKillerIds.length > 0;
 
   return (
     <Box flex={{ col: true }}>
@@ -517,14 +616,37 @@ export const EliminatedByModal: FC<EliminatedByModalProps> = ({
       </Modal.Title>
       <Modal.Content minWidth={400}>
         <Box flex={{ col: true, gap: 2 }}>
-          {eliminatedByIds.length === 0 ? (
+          {!hasRows ? (
             <Typography.Text type="secondary" size="small">
               Нет записей
             </Typography.Text>
           ) : (
-            eliminatedByIds.map((id, index) => {
-              const { name, killerPlayerId } = getKillerInfo(id);
-              return (
+            <>
+              {eventsAsVictim.map((ev) => (
+                <Box
+                  key={ev.eventId}
+                  flex={{ align: "center", justify: "space-between", gap: 2 }}
+                  style={{
+                    padding: "8px 12px",
+                    borderRadius: 10,
+                    border: "1px solid var(--border-color)",
+                  }}
+                >
+                  <Typography.Text size="small">
+                    {killerNamesLine(ev.killerPlayerIds)}
+                  </Typography.Text>
+                  <Button
+                    type="ghost"
+                    size="xxSmall"
+                    style={{ padding: 4 }}
+                    iconRight={<X size={16} color="var(--text-error)" />}
+                    onClick={() => handleUndoByEventId(ev.eventId)}
+                    disabled={removingEventId !== null}
+                    loading={removingEventId === ev.eventId}
+                  />
+                </Box>
+              ))}
+              {legacyKillerIds.map((id, index) => (
                 <Box
                   key={`${id}-${index}`}
                   flex={{ align: "center", justify: "space-between", gap: 2 }}
@@ -534,19 +656,16 @@ export const EliminatedByModal: FC<EliminatedByModalProps> = ({
                     border: "1px solid var(--border-color)",
                   }}
                 >
-                  <Typography.Text size="small">{name}</Typography.Text>
-                  <Button
-                    type="ghost"
-                    size="xxSmall"
-                    style={{ padding: 4 }}
-                    iconRight={<X size={16} color="var(--text-error)" />}
-                    onClick={() => handleRemove(killerPlayerId)}
-                    disabled={removingId !== null}
-                    loading={removingId === killerPlayerId}
-                  />
+                  <Typography.Text size="small">
+                    {players.find((p) => String(p.playerId) === String(id))
+                      ?.playerName ?? id}
+                  </Typography.Text>
+                  <Typography.Text type="tertiary" size="xxSmall">
+                    Нет eventId — откат недоступен
+                  </Typography.Text>
                 </Box>
-              );
-            })
+              ))}
+            </>
           )}
         </Box>
       </Modal.Content>
