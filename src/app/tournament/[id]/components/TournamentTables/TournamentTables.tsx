@@ -275,10 +275,14 @@ const SetOutPlayerModal: FC<SetOutPlayerModalProps> = ({
 };
 
 export const TournamentTables: FC<TournamentTablesProps> = ({ tournament }) => {
-  const [showTablePicker, setShowTablePicker] = useState(false);
+  const [showTablePicker, setShowTablePicker] = useState(true);
   const [selectedTableId, setSelectedTableId] = useState<number | undefined>(
     undefined,
   );
+
+  useEffect(() => {
+    setShowTablePicker(true);
+  }, [tournament.id]);
 
   const handleSelectTable = (tableId: number) => {
     setSelectedTableId(tableId);
@@ -525,7 +529,7 @@ export const TournamentTables: FC<TournamentTablesProps> = ({ tournament }) => {
 
         {!selectedTableId && (
           <Typography.Text type="secondary" size="small">
-            Нажмите «Выбрать стол», чтобы увидеть список игроков
+            Выберите стол, чтобы увидеть список игроков
           </Typography.Text>
         )}
         {selectedTableId && tablePlayers.length === 0 && (
