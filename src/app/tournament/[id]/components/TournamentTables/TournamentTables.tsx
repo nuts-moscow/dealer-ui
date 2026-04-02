@@ -62,10 +62,7 @@ const SetOutPlayerModal: FC<SetOutPlayerModalProps> = ({
     if (!opened || !bustedPlayer?.playerId) {
       return;
     }
-    const cand = players.filter(
-      (p) => p.status !== "Out" && p.playerId !== bustedPlayer.playerId,
-    );
-    setSelectedKillerIds(cand[0]?.playerId ? [cand[0].playerId] : []);
+    setSelectedKillerIds([]);
     setBurnedStack(false);
     setBurnedChipsInput("");
   }, [opened, bustedPlayer?.playerId, players]);
@@ -205,28 +202,63 @@ const SetOutPlayerModal: FC<SetOutPlayerModalProps> = ({
             />
           ) : candidates.length > 0 ? (
             <Box flex={{ col: true, gap: 2 }}>
-              {candidates.map((player) => (
-                <label
-                  key={player.playerId}
+              {candidates.map((player) => {
+                const killerSelected = selectedKillerIds.includes(
+                  player.playerId,
+                );
+                return (
+                  <label
+                    key={player.playerId}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      cursor: "pointer",
+                      userSelect: "none",
+                      padding: "8px 12px",
+                      borderRadius: 10,
+                      border: killerSelected
+                        ? "2px solid rgba(0, 0, 0, 0.35)"
+                        : "1px solid var(--border-color)",
+                      backgroundColor: killerSelected
+                        ? "rgba(59, 130, 246, 0.12)"
+                        : "var(--background-primary)",
+                      transition: "background-color 0.15s, border-color 0.15s",
+                    }}
+                  >
+                    <input
+                      type="checkbox"
+                      checked={killerSelected}
+                      onChange={() => toggleKiller(player.playerId)}
+                      disabled={isLoading}
+                    />
+                    <Typography.Text size="small">
+                      {player.playerName} (ID: {player.playerId})
+                    </Typography.Text>
+                  </label>
+                );
+              })}
+              {effectiveKillerIds.length > 0 ? (
+                <Box
                   style={{
-                    display: "flex",
-                    alignItems: "center",
-                    gap: 8,
-                    cursor: "pointer",
-                    userSelect: "none",
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid rgba(59, 130, 246, 0.4)",
+                    backgroundColor: "rgba(59, 130, 246, 0.1)",
                   }}
                 >
-                  <input
-                    type="checkbox"
-                    checked={selectedKillerIds.includes(player.playerId)}
-                    onChange={() => toggleKiller(player.playerId)}
-                    disabled={isLoading}
-                  />
                   <Typography.Text size="small">
-                    {player.playerName} (ID: {player.playerId})
+                    Выбраны убийцы ({effectiveKillerIds.length}):{" "}
+                    {effectiveKillerIds
+                      .map(
+                        (id) =>
+                          candidates.find((c) => c.playerId === id)
+                            ?.playerName ?? id,
+                      )
+                      .join(", ")}
                   </Typography.Text>
-                </label>
-              ))}
+                </Box>
+              ) : null}
               {effectiveKillerIds.length > 1 ? (
                 <Typography.Text type="secondary" size="xxSmall">
                   Выбрано убийц: {effectiveKillerIds.length}. Каждый получит долю

@@ -66,8 +66,7 @@ export const AddReentryModal: FC<AddReentryModalProps> = ({
     setCount(1);
     setBurnedStack(false);
     setBurnedChipsInput("");
-    const first = killerCandidates[0]?.playerId;
-    setSelectedKillerIds(first ? [first] : []);
+    setSelectedKillerIds([]);
   }, [player?.playerId, killerCandidates]);
 
   const toggleKiller = (id: string) => {
@@ -180,29 +179,64 @@ export const AddReentryModal: FC<AddReentryModalProps> = ({
                   Нет игроков за этим столом
                 </Typography.Text>
               ) : (
-                killerCandidates.map((candidate) => (
-                  <label
-                    key={candidate.playerId}
-                    style={{
-                      display: "flex",
-                      alignItems: "center",
-                      gap: 8,
-                      cursor: "pointer",
-                      userSelect: "none",
-                    }}
-                  >
-                    <input
-                      type="checkbox"
-                      checked={selectedKillerIds.includes(candidate.playerId)}
-                      onChange={() => toggleKiller(candidate.playerId)}
-                      disabled={isSaving}
-                    />
-                    <Typography.Text size="small">
-                      {candidate.playerName} (ID: {candidate.playerId})
-                    </Typography.Text>
-                  </label>
-                ))
+                killerCandidates.map((candidate) => {
+                  const killerSelected = selectedKillerIds.includes(
+                    candidate.playerId,
+                  );
+                  return (
+                    <label
+                      key={candidate.playerId}
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: 8,
+                        cursor: "pointer",
+                        userSelect: "none",
+                        padding: "8px 12px",
+                        borderRadius: 10,
+                        border: killerSelected
+                          ? "2px solid rgba(0, 0, 0, 0.35)"
+                          : "1px solid var(--border-color)",
+                        backgroundColor: killerSelected
+                          ? "rgba(59, 130, 246, 0.12)"
+                          : "var(--background-primary)",
+                        transition: "background-color 0.15s, border-color 0.15s",
+                      }}
+                    >
+                      <input
+                        type="checkbox"
+                        checked={killerSelected}
+                        onChange={() => toggleKiller(candidate.playerId)}
+                        disabled={isSaving}
+                      />
+                      <Typography.Text size="small">
+                        {candidate.playerName} (ID: {candidate.playerId})
+                      </Typography.Text>
+                    </label>
+                  );
+                })
               )}
+              {effectiveKillerIds.length > 0 ? (
+                <Box
+                  style={{
+                    padding: "10px 12px",
+                    borderRadius: 10,
+                    border: "1px solid rgba(59, 130, 246, 0.4)",
+                    backgroundColor: "rgba(59, 130, 246, 0.1)",
+                  }}
+                >
+                  <Typography.Text size="small">
+                    Выбраны убийцы ({effectiveKillerIds.length}):{" "}
+                    {effectiveKillerIds
+                      .map(
+                        (id) =>
+                          killerCandidates.find((c) => c.playerId === id)
+                            ?.playerName ?? id,
+                      )
+                      .join(", ")}
+                  </Typography.Text>
+                </Box>
+              ) : null}
               {effectiveKillerIds.length > 1 ? (
                 <Typography.Text type="secondary" size="xxSmall">
                   Выбрано убийц: {effectiveKillerIds.length}. Каждый получит
