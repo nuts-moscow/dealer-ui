@@ -279,10 +279,18 @@ export const TournamentTables: FC<TournamentTablesProps> = ({ tournament }) => {
   const [selectedTableId, setSelectedTableId] = useState<number | undefined>(
     undefined,
   );
+  /** Строка, для которой показаны кнопки действий (клик по строке). */
+  const [expandedPlayerId, setExpandedPlayerId] = useState<string | null>(
+    null,
+  );
 
   useEffect(() => {
     setShowTablePicker(true);
   }, [tournament.id]);
+
+  useEffect(() => {
+    setExpandedPlayerId(null);
+  }, [tournament.id, selectedTableId]);
 
   const handleSelectTable = (tableId: number) => {
     setSelectedTableId(tableId);
@@ -424,109 +432,139 @@ export const TournamentTables: FC<TournamentTablesProps> = ({ tournament }) => {
         </Box>
 
         <Box flex={{ col: true, gap: 2, width: "100%" }}>
-          {tablePlayers.map((player) => (
-            <Box
-              key={player.playerId}
-              flex={{ width: "100%", align: "center", gap: 2 }}
-              style={{
-                padding: "8px 12px",
-                borderRadius: 10,
-                border: "1px solid rgba(0, 0, 0, 0.08)",
-                backgroundColor:
-                  player.signAgreement === false
-                    ? "rgba(255, 196, 2, 0.22)"
-                    : "#fff",
-              }}
-            >
-              <Typography.Text
-                size="small"
-                type="secondary"
-                flexItem={{ minWidth: 56 }}
+          {tablePlayers.map((player) => {
+            const isExpanded = expandedPlayerId === player.playerId;
+            return (
+              <Box
+                key={player.playerId}
+                flex={{ width: "100%", align: "center", gap: 2 }}
+                onClick={() =>
+                  setExpandedPlayerId((prev) =>
+                    prev === player.playerId ? null : player.playerId,
+                  )
+                }
+                style={{
+                  padding: "8px 12px",
+                  borderRadius: 10,
+                  border: isExpanded
+                    ? "1px solid rgba(0, 0, 0, 0.22)"
+                    : "1px solid rgba(0, 0, 0, 0.08)",
+                  backgroundColor:
+                    player.signAgreement === false
+                      ? "rgba(255, 196, 2, 0.22)"
+                      : "#fff",
+                  cursor: "pointer",
+                  boxShadow: isExpanded
+                    ? "0 1px 4px rgba(0, 0, 0, 0.06)"
+                    : undefined,
+                }}
               >
-                {player.tournamentPlayerId}
-              </Typography.Text>
-              <Typography.Text size="small" flexItem={{ flex: 1 }}>
-                {player.playerName}
-              </Typography.Text>
-              <Typography.Text
-                size="small"
-                type="secondary"
-                flexItem={{ minWidth: 120 }}
-              >
-                {statusLabels[player.status] ?? player.status}
-              </Typography.Text>
-              <Box flex={{ gap: 2 }} style={{ flexWrap: "wrap" }}>
-                <Button
+                <Typography.Text
+                  size="small"
                   type="secondary"
-                  size="xxSmall"
-                  onClick={() => {
-                    setPlayerBonusesPlayerId(player.playerId);
-                    openPlayerBonusesModal();
-                  }}
+                  flexItem={{ minWidth: 56 }}
                 >
-                  Бонусы
-                </Button>
-                {tournament.status !== "RegistrationOpen" &&
-                  player.status !== "Out" && (
-                    <>
-                      <Button
-                        type="secondary"
-                        size="xxSmall"
-                        onClick={() => {
-                          setReentryPlayer(player);
-                          openAddReentryModal();
-                        }}
-                      >
-                        Добавить реентри
-                      </Button>
-                      {(player.burnedStackEvents ?? []).some(
-                        (e) => e.source === "Rebuy",
-                      ) && (
-                        <Button
-                          type="secondary"
-                          size="xxSmall"
-                          onClick={() => {
-                            setBurnedRebuyUndoPlayerId(player.playerId);
-                            openBurnedRebuyUndoModal();
-                          }}
-                        >
-                          Откат сгорания
-                        </Button>
+                  {player.tournamentPlayerId}
+                </Typography.Text>
+                <Typography.Text size="small" flexItem={{ flex: 1 }}>
+                  {player.playerName}
+                </Typography.Text>
+                <Typography.Text
+                  size="small"
+                  type="secondary"
+                  flexItem={{ minWidth: 120 }}
+                >
+                  {statusLabels[player.status] ?? player.status}
+                </Typography.Text>
+                {isExpanded ? (
+                  <Box
+                    flex={{ gap: 2 }}
+                    style={{ flexWrap: "wrap" }}
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <Button
+                      type="secondary"
+                      size="xxSmall"
+                      onClick={() => {
+                        setPlayerBonusesPlayerId(player.playerId);
+                        openPlayerBonusesModal();
+                      }}
+                    >
+                      Бонусы
+                    </Button>
+                    {tournament.status !== "RegistrationOpen" &&
+                      player.status !== "Out" && (
+                        <>
+                          <Button
+                            type="secondary"
+                            size="xxSmall"
+                            onClick={() => {
+                              setReentryPlayer(player);
+                              openAddReentryModal();
+                            }}
+                          >
+                            Добавить реентри
+                          </Button>
+                          {(player.burnedStackEvents ?? []).some(
+                            (e) => e.source === "Rebuy",
+                          ) && (
+                            <Button
+                              type="secondary"
+                              size="xxSmall"
+                              onClick={() => {
+                                setBurnedRebuyUndoPlayerId(player.playerId);
+                                openBurnedRebuyUndoModal();
+                              }}
+                            >
+                              Откат сгорания
+                            </Button>
+                          )}
+                          <Button
+                            type="secondary"
+                            size="xxSmall"
+                            onClick={() => openBountyModal(player)}
+                          >
+                            Баунти
+                          </Button>
+                          <Button
+                            type="secondary"
+                            size="xxSmall"
+                            onClick={() => openEliminatedByModal(player)}
+                          >
+                            Кто выбил
+                          </Button>
+                          <Button
+                            type="error"
+                            size="xxSmall"
+                            onClick={() => {
+                              const tid = player.tableId;
+                              const snapshot = (
+                                nonRegisteredPlayers ?? []
+                              ).filter(
+                                (p) => String(p.tableId) === String(tid),
+                              );
+                              setEliminationTableSnapshot(snapshot);
+                              setPlayerToSetOut(player);
+                              openSetOutPlayerModal();
+                            }}
+                          >
+                            Вылетел
+                          </Button>
+                        </>
                       )}
-                      <Button
-                        type="secondary"
-                        size="xxSmall"
-                        onClick={() => openBountyModal(player)}
-                      >
-                        Баунти
-                      </Button>
-                      <Button
-                        type="secondary"
-                        size="xxSmall"
-                        onClick={() => openEliminatedByModal(player)}
-                      >
-                        Кто выбил
-                      </Button>
-                      <Button
-                        type="error"
-                        size="xxSmall"
-                        onClick={() => {
-                          const tid = player.tableId;
-                          const snapshot = (nonRegisteredPlayers ?? []).filter(
-                            (p) => String(p.tableId) === String(tid),
-                          );
-                          setEliminationTableSnapshot(snapshot);
-                          setPlayerToSetOut(player);
-                          openSetOutPlayerModal();
-                        }}
-                      >
-                        Вылетел
-                      </Button>
-                    </>
-                  )}
+                  </Box>
+                ) : (
+                  <Typography.Text
+                    type="tertiary"
+                    size="xxSmall"
+                    style={{ userSelect: "none" }}
+                  >
+                    Нажмите строку
+                  </Typography.Text>
+                )}
               </Box>
-            </Box>
-          ))}
+            );
+          })}
 
           {!selectedTableId && (
             <Typography.Text type="secondary" size="small">
